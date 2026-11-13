@@ -1,0 +1,38 @@
+name: Purge jsDelivr cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "main.js"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 触发 jsDelivr 刷新
+        run: |
+          curl -sS "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/main.js"
+          echo
+
+      - name: 校验是否真的同步（最多等 90 秒）
+        run: |
+          WANT=$(sha256sum main.js | cut -d' ' -f1)
+          echo "仓库版本: $WANT"
+          for i in $(seq 1 30); do
+            GOT=$(curl -sS "https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/main.js" | sha256sum | cut -d' ' -f1)
+            echo "第 $i 次: $GOT"
+            if [ "$GOT" = "$WANT" ]; then
+              echo "✅ jsDelivr 已与仓库一致"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "⚠️ 90 秒内未同步，可能被节流，去 Actions 页手动重跑一次"
+          exit 1
